@@ -11,7 +11,7 @@ const generateAccessAndRefreshToken = async(userId) => {
         const refreshToken = user.generateRefreshToken()
 
         user.refreshToken = refreshToken
-        user.save({validateBeforeSave: false})
+        await user.save({validateBeforeSave: false})
 
         return {accessToken, refreshToken}
 
@@ -123,10 +123,61 @@ const loginUser = asyncHandler(async (req, res) => {
     if(!isPasswordValid){
         throw new apiError(401, "Invalid user credentials")
     }
+
+    const {accessToken, refreshToken} = await generateAccessAndRefreshToken(user._id)
+
+    const loggedInUser = await User.findOne(user._id).select("-password -refreshToken")
+
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+
+    return res
+    .status(200)
+    .cookie("accessToken",accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+        new apiResponse(
+            200,
+            {
+                user: loggedInUser, accessToken, refreshToken
+            },
+            "user logged In Successfully"
+        )
+    )
+})
+
+const logoutUser = asyncHandler(async(req, res) => {
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set: {
+                refreshToken: undefined
+            }
+        },
+        {
+            new: true
+        }
+
+    )
+
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+
+    return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new apiResponse(200, {}, "User logged Out"))
+    
 })
 
 
 export {
     registerUser,
-    loginUser
+    loginUser,
+    logoutUser
 }
